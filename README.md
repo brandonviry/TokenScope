@@ -2,6 +2,16 @@
 
 Application Windows native en **Rust**, avec interface egui/OpenGL. Aucun Node.js, Electron, navigateur embarqué ou serveur web pour l’interface.
 
+## Aperçu de l’interface
+
+**Vue d’ensemble** — quotas et prochaines réinitialisations par fournisseur.
+
+![Vue d’ensemble de TokenScope avec les limites des comptes](docs/images/vue-ensemble.png)
+
+**Historique** — graphique et journal de consommation.
+
+![Historique de consommation dans TokenScope](docs/images/historique.png)
+
 ## Démarrer
 
 Télécharger `TokenScope-Windows-x64.zip` depuis la [dernière release](https://github.com/brandonviry/TokenScope/releases/latest), extraire son contenu puis double-cliquer sur **TokenScope.exe**. Le premier scan des journaux s’effectue en arrière-plan. L’application reste ouverte pour actualiser les données.
