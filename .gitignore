@@ -9,6 +9,8 @@
 /.research/
 /qa/*
 !/qa/smoke.py
+!/qa/qoder_capture.py
+!/qa/antigravity_capture.py
 !/qa/antigravity_probe.py
 !/qa/README.md
 /profil-test/

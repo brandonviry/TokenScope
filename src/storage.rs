@@ -44,31 +44,25 @@ impl Store {
             Ok(mut config) => {
                 config.refresh_seconds = config.refresh_seconds.clamp(15, 3600);
                 config.alert_percent = config.alert_percent.clamp(1.0, 100.0);
-                if config.schema_version < 2 {
-                    if !config
-                        .providers
-                        .iter()
-                        .any(|p| p.kind == crate::model::ProviderKind::Antigravity)
-                        && let Some(provider) = Config::default()
-                            .providers
-                            .into_iter()
-                            .find(|p| p.kind == crate::model::ProviderKind::Antigravity)
+                if config.schema_version < 3 {
+                    if config.schema_version < 2
+                        && !config.providers.iter().any(|p| p.kind == crate::model::ProviderKind::Antigravity)
+                        && let Some(provider) = Config::default().providers.into_iter().find(|p| p.kind == crate::model::ProviderKind::Antigravity)
                     {
-                        let index = config
-                            .providers
-                            .iter()
-                            .position(|p| p.kind == crate::model::ProviderKind::OllamaCloud)
-                            .unwrap_or(config.providers.len());
+                        let index = config.providers.iter().position(|p| p.kind == crate::model::ProviderKind::OllamaCloud).unwrap_or(config.providers.len());
                         config.providers.insert(index, provider);
                     }
-                    config.schema_version = 2;
+                    if !config.providers.iter().any(|p| p.kind == crate::model::ProviderKind::Qoder)
+                        && let Some(mut provider) = Config::default().providers.into_iter().find(|p| p.kind == crate::model::ProviderKind::Qoder)
+                    {
+                        if config.providers.iter().any(|p| p.id == provider.id) {
+                            provider.id = uuid::Uuid::new_v4().to_string();
+                        }
+                        config.providers.push(provider);
+                    }
+                    config.schema_version = 3;
                     if let Err(error) = self.save_config(&config) {
-                        return (
-                            config,
-                            Some(format!(
-                                "Antigravity ajouté en mémoire. Enregistrement de la mise à jour : {error}"
-                            )),
-                        );
+                        return (config, Some(format!("Mise à jour des fournisseurs en mémoire. Échec de l’enregistrement : {error}")));
                     }
                 }
                 (config, None)
@@ -258,7 +252,7 @@ mod tests {
         fs::write(store.config_path(), serde_json::to_vec(&legacy).unwrap()).unwrap();
         let (mut config, warning) = store.load_config();
         assert!(warning.is_none());
-        assert_eq!(config.schema_version, 2);
+        assert_eq!(config.schema_version, 3);
         assert_eq!(config.providers[0].id, "custom-id");
         assert_eq!(config.providers[0].log_path, "D:/mes-donnees");
         assert_eq!(config.providers[0].limits[0].amount, 12345.0);
@@ -275,6 +269,8 @@ mod tests {
         let backup: serde_json::Value =
             serde_json::from_slice(&fs::read(root.join("config.backup.json")).unwrap()).unwrap();
         assert_eq!(backup, legacy);
+        assert_eq!(config.providers.iter().filter(|p| p.kind == crate::model::ProviderKind::Qoder).count(), 1);
+        config.providers.retain(|p| p.kind != crate::model::ProviderKind::Qoder);
         config
             .providers
             .retain(|p| p.kind != crate::model::ProviderKind::Antigravity);
@@ -287,6 +283,26 @@ mod tests {
                 .iter()
                 .all(|p| p.kind != crate::model::ProviderKind::Antigravity)
         );
+        assert!(store.load_config().0.providers.iter().all(|p| p.kind != crate::model::ProviderKind::Qoder));
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn qoder_migration_preserves_existing_provider_and_id_collisions() {
+        let root = std::env::temp_dir().join(format!("tokenscope-qoder-upgrade-{}", uuid::Uuid::new_v4()));
+        let store = Store::new(Some(root.clone()));
+        fs::create_dir_all(&root).unwrap();
+        let mut config = Config { schema_version: 2, ..Config::default() };
+        let qoder = config.providers.iter_mut().find(|p| p.kind == crate::model::ProviderKind::Qoder).unwrap();
+        qoder.enabled = false;
+        fs::write(store.config_path(), serde_json::to_vec(&config).unwrap()).unwrap();
+        let loaded = store.load_config().0;
+        assert_eq!(loaded.providers.iter().filter(|p| p.kind == crate::model::ProviderKind::Qoder).count(), 1);
+        assert!(!loaded.providers.iter().find(|p| p.kind == crate::model::ProviderKind::Qoder).unwrap().enabled);
+        config.providers.retain(|p| p.kind != crate::model::ProviderKind::Qoder);
+        config.providers[0].id = "qoder".into();
+        fs::write(store.config_path(), serde_json::to_vec(&config).unwrap()).unwrap();
+        let loaded = store.load_config().0;
+        assert_ne!(loaded.providers.iter().find(|p| p.kind == crate::model::ProviderKind::Qoder).unwrap().id, "qoder");
         fs::remove_dir_all(root).unwrap();
     }
     #[test]

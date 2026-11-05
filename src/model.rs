@@ -7,6 +7,7 @@ pub enum ProviderKind {
     Claude,
     ClaudeCode,
     Antigravity,
+    Qoder,
     OllamaCloud,
     Ollama,
     #[default]
@@ -15,11 +16,12 @@ pub enum ProviderKind {
 }
 
 impl ProviderKind {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Codex,
         Self::Claude,
         Self::ClaudeCode,
         Self::Antigravity,
+        Self::Qoder,
         Self::OllamaCloud,
         Self::Ollama,
         Self::Jsonl,
@@ -31,6 +33,7 @@ impl ProviderKind {
             Self::Claude => "Claude (abonnement)",
             Self::ClaudeCode => "Claude Code",
             Self::Antigravity => "Google Antigravity / Gemini",
+            Self::Qoder => "Qoder CLI",
             Self::OllamaCloud => "Ollama Cloud (clé API)",
             Self::Ollama => "Ollama local (collecteur optionnel)",
             Self::Jsonl => "Fournisseur personnalisé (JSONL)",
@@ -116,12 +119,13 @@ impl Default for Config {
                     | ProviderKind::Claude
                     | ProviderKind::ClaudeCode
                     | ProviderKind::Antigravity
+                    | ProviderKind::Qoder
                     | ProviderKind::OllamaCloud
             ),
             ..Default::default()
         };
         Self {
-            schema_version: 2,
+            schema_version: 3,
             providers: vec![
                 base(
                     "codex",
@@ -152,6 +156,14 @@ impl Default for Config {
                     "Antigravity · Gemini",
                     ProviderKind::Antigravity,
                     [138, 180, 248],
+                    String::new(),
+                    String::new(),
+                ),
+                base(
+                    "qoder",
+                    "Qoder",
+                    ProviderKind::Qoder,
+                    [120, 174, 250],
                     String::new(),
                     String::new(),
                 ),

@@ -131,6 +131,12 @@ impl TokenScope {
             .windows(2)
             .find(|a| a[0] == "--screenshot")
             .map(|a| std::path::PathBuf::from(&a[1]));
+        // Optional zoom applies only to automated screenshots, never normal use.
+        if capture.is_some()
+            && let Some(zoom) = arguments.windows(2).find(|a| a[0] == "--capture-zoom").and_then(|a| a[1].parse::<f32>().ok()).filter(|v| (0.5..=1.0).contains(v))
+        {
+            cc.egui_ctx.set_zoom_factor(zoom);
+        }
         let start_page = arguments
             .windows(2)
             .find(|a| a[0] == "--page")
@@ -826,7 +832,8 @@ impl TokenScope {
             });
             ui.add_space(17.0);
             let quotas = &r.quotas;
-            for quota in quotas.iter().take(2) {
+            let visible_quota_count = if p.kind == ProviderKind::Antigravity { 5 } else { 2 };
+            for quota in quotas.iter().take(visible_quota_count) {
                 quota_row(
                     ui,
                     quota,
@@ -837,9 +844,9 @@ impl TokenScope {
                     r.observed_at,
                 );
             }
-            if quotas.len() > 2 {
+            if quotas.len() > visible_quota_count {
                 egui::CollapsingHeader::new(
-                    RichText::new(format!("{} autre(s) limite(s)", quotas.len() - 2))
+                    RichText::new(format!("{} autre(s) limite(s)", quotas.len() - visible_quota_count))
                         .size(10.5)
                         .color(MUTED),
                 )
@@ -847,11 +854,11 @@ impl TokenScope {
                 .default_open(
                     quotas
                         .iter()
-                        .skip(2)
+                        .skip(visible_quota_count)
                         .any(|q| q.used_percent >= self.config.alert_percent),
                 )
                 .show(ui, |ui| {
-                    for quota in quotas.iter().skip(2) {
+                    for quota in quotas.iter().skip(visible_quota_count) {
                         quota_row(
                             ui,
                             quota,
@@ -944,6 +951,8 @@ impl TokenScope {
             ui.label(
                 RichText::new(if p.kind == ProviderKind::Antigravity && !known {
                     "Tokens non communiqués par Google".into()
+                } else if p.kind == ProviderKind::Qoder && !known {
+                    "Tokens non communiqués par Qoder".into()
                 } else if p.kind == ProviderKind::OllamaCloud && !known {
                     format!(
                         "{requests} requêtes · {}",
@@ -1300,7 +1309,7 @@ impl TokenScope {
             });
             if p.kind!=previous_kind {p.key_env=if p.kind==ProviderKind::OllamaCloud{"OLLAMA_API_KEY".into()}else{"ANTHROPIC_ADMIN_KEY".into()};self.dirty=true;}
             ui.add_space(17.0);ui.separator();ui.add_space(14.0);
-            if matches!(p.kind,ProviderKind::Codex|ProviderKind::Claude|ProviderKind::ClaudeCode|ProviderKind::AnthropicApi|ProviderKind::OllamaCloud|ProviderKind::Antigravity) {
+            if matches!(p.kind,ProviderKind::Codex|ProviderKind::Claude|ProviderKind::ClaudeCode|ProviderKind::AnthropicApi|ProviderKind::OllamaCloud|ProviderKind::Antigravity|ProviderKind::Qoder) {
                 self.dirty|=ui.checkbox(&mut p.online,"Récupérer les limites et crédits du compte").changed();ui.add_space(8.0);
                 if matches!(p.kind,ProviderKind::AnthropicApi|ProviderKind::OllamaCloud) {
                     ui.label(RichText::new(if p.kind==ProviderKind::OllamaCloud{"Variable d’environnement contenant la clé API Ollama"}else{"Variable d’environnement contenant la clé Admin / Analytics"}).size(11.0).color(MUTED));
@@ -1316,6 +1325,8 @@ impl TokenScope {
                         if ui.small_button("Oublier la clé stockée").clicked(){key_action=Some(crate::keys::forget(&p.id));}
                     });
                     ui.label(RichText::new(if p.kind==ProviderKind::OllamaCloud{"Lecture de /api/balance et /api/usage. Détection automatique des clés OpenCode, sans recopier leur fichier."}else{"Historique distant de 90 jours, agrégé par jour UTC. Les clés sont conservées hors de la configuration."}).size(10.5).color(MUTED));
+                } else if p.kind == ProviderKind::Qoder {
+                    ui.label(RichText::new("Installez Qoder CLI et connectez-vous avec qodercli login. TokenScope utilise la session locale en lecture seule. Les crédits sont disponibles, pas l’historique de tokens.").size(10.5).color(MUTED));
                 } else {
                     ui.label(RichText::new(if p.kind==ProviderKind::Antigravity{"Fichier de session Antigravity facultatif · vide = détection automatique"}else{"Fichier de session du client officiel"}).size(11.0).color(MUTED));
                     ui.horizontal(|ui| {
@@ -1326,7 +1337,7 @@ impl TokenScope {
                     if p.kind==ProviderKind::Antigravity {
                         ui.label(RichText::new(crate::antigravity::connection_description(p)).size(10.5).color(ACCENT));
                         ui.label(RichText::new("Quotas de l’abonnement Google AI via Antigravity. La session est renouvelée si nécessaire par le client natif agy installé.").size(10.5).color(MUTED));
-                        ui.label(RichText::new("Google expose ici la limite active de chaque modèle. Aucune fenêtre de 5 h ou de 7 j n’est déduite d’un simple délai.").size(10.5).color(MUTED));
+                        ui.label(RichText::new("Les fenêtres et groupes affichés sont ceux communiqués par Google ; les périodes manquantes restent inconnues.").size(10.5).color(MUTED));
                     }
                     if matches!(p.kind,ProviderKind::Claude|ProviderKind::ClaudeCode){ui.label(RichText::new("Claude et Claude Code utilisent le même quota d’abonnement. Les tokens du chat Claude nécessitent un import.").size(10.5).color(AMBER));}
                 }
@@ -1550,6 +1561,7 @@ impl TokenScope {
                     p.color = default.color;
                     p.key_env = default.key_env;
                 }
+                if p.kind == ProviderKind::Qoder { p.online = true; }
                 self.config.providers.push(p);
                 self.editor = self.config.providers.len() - 1;
                 self.page = Page::Connections;
@@ -1893,6 +1905,7 @@ fn provider_icon(ui: &mut egui::Ui, kind: ProviderKind, color: Color32) {
             ProviderKind::Claude => "✳",
             ProviderKind::ClaudeCode => "{ }",
             ProviderKind::Antigravity => "G",
+            ProviderKind::Qoder => "Q",
             ProviderKind::Ollama | ProviderKind::OllamaCloud => "L",
             _ => "+",
         },
@@ -1966,7 +1979,7 @@ fn quota_row(
             format!("{} disponibles", percent((100.0 - q.used_percent).max(0.0)))
         };
         ui.label(RichText::new(text).size(9.5).color(MUTED));
-        if !expired {
+        if !expired && (q.resets_at.is_some() || q.unit != "crédits") {
             ui.label(
                 RichText::new(format!("·  ↻ {}", countdown(q.resets_at, now)))
                     .size(9.5)

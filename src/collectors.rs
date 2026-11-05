@@ -208,6 +208,7 @@ impl Collector {
                         }
                         ProviderKind::AnthropicApi => self.fetch_anthropic(provider),
                         ProviderKind::OllamaCloud => self.fetch_ollama_cloud(provider),
+                        ProviderKind::Qoder => crate::qoder::fetch(provider),
                         ProviderKind::Antigravity => self
                             .client
                             .as_ref()

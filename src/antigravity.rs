@@ -19,6 +19,8 @@ const ENDPOINTS: [&str; 2] = [
 // This product header selects Antigravity quota, rather than Gemini CLI / Code
 // Assist. The API serves different entitlements for the same OAuth account.
 const USER_AGENT: &str = "antigravity/1.4.0 TokenScope/1.1.0 windows/amd64";
+// The quota summary is gated by product identity; the CLI identity exposes all pools.
+const SUMMARY_USER_AGENT: &str = "antigravity/cli/1.5.0 windows/amd64";
 const CLIENT_METADATA: &str =
     r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#;
 
@@ -222,7 +224,7 @@ fn request(
     let response = client
         .post(format!("{endpoint}/v1internal:{operation}"))
         .bearer_auth(token)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", if operation == "retrieveUserQuotaSummary" { SUMMARY_USER_AGENT } else { USER_AGENT })
         .header("Client-Metadata", CLIENT_METADATA)
         .timeout(StdDuration::from_secs(8))
         .json(body)
@@ -260,23 +262,26 @@ pub fn fetch(client: &Client, provider: &ProviderConfig) -> Result<ProviderSnaps
     }
     let mut last_error = "Quotas Antigravity indisponibles.".to_string();
     for endpoint in ENDPOINTS {
-        let models = match request(
-            client,
-            endpoint,
-            "fetchAvailableModels",
-            &json!({}),
-            &session.access_token,
-        ) {
-            Ok(value) => value,
-            Err(error) => {
-                last_error = error;
-                continue;
+        let tier = request(client, endpoint, "loadCodeAssist", &json!({"metadata":{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"},"mode":"HEALTH_CHECK"}), &session.access_token).ok();
+        let summary = request(client, endpoint, "retrieveUserQuotaSummary", &json!({}), &session.access_token);
+        let mut report = match summary.and_then(|value| parse_quota_summary(&value, provider, Utc::now())) {
+            Ok(mut report) => { apply_tier(&mut report, tier.as_ref()); report }
+            Err(_) => {
+                let models = match request(client, endpoint, "fetchAvailableModels", &json!({}), &session.access_token) {
+                    Ok(value) => value,
+                    Err(error) => { last_error = error; continue; }
+                };
+                match parse_quotas(&models, tier.as_ref(), provider, Utc::now()) {
+                    Ok(mut report) => {
+                        report.status = "Quotas par modèle uniquement ; fenêtres partagées indisponibles.".into();
+                        report
+                    }
+                    Err(error) => { last_error = error; continue; }
+                }
             }
         };
-        let tier=request(client,endpoint,"loadCodeAssist",&json!({"metadata":{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"},"mode":"HEALTH_CHECK"}),&session.access_token).ok();
-        let mut report = parse_quotas(&models, tier.as_ref(), provider, Utc::now())?;
         report.source = "Compte Google Antigravity".into();
-        if tier.is_none() {
+        if tier.is_none() && !report.status.contains("uniquement") {
             report.status = "Quotas synchronisés ; forfait non communiqué par Google.".into();
         }
         return Ok(report);
@@ -355,6 +360,43 @@ pub fn parse_quotas(
     if report.quotas.is_empty() {
         return Err("Google n’a pas communiqué de quota Gemini exploitable pour ce compte.".into());
     }
+    apply_tier(&mut report, tier);
+    Ok(report)
+}
+
+
+/// Parses only explicitly returned quota groups and windows; absent values stay unknown.
+pub fn parse_quota_summary(value: &Value, provider: &ProviderConfig, now: DateTime<Utc>) -> Result<ProviderSnapshot, String> {
+    let groups = value["groups"].as_array().ok_or("Groupes de quota Antigravity non reconnus.")?;
+    let mut report = ProviderSnapshot {
+        id: provider.id.clone(), observed_at: Some(now), source: "Google Antigravity".into(),
+        status: "Quotas partagés synchronisés avec Google".into(), live: true,
+        usage_note: Some("Quotas partagés · tokens non fournis".into()), ..Default::default()
+    };
+    for group in groups {
+        let Some(label) = group["displayName"].as_str().filter(|s| !s.trim().is_empty()) else { continue };
+        let label = match label {
+            "Gemini Models" => "Gemini Pro / Flash",
+            "Claude and GPT models" => "Claude / GPT",
+            "Gemini 4 Argon" => "Gemini 4 Argon",
+            _ => continue,
+        };
+        let Some(buckets) = group["buckets"].as_array() else { continue };
+        for bucket in buckets {
+            let (window, seconds) = match bucket["window"].as_str() {
+                Some("5h") => ("5 heures", 5 * 3600),
+                Some("weekly") => ("hebdomadaire", 7 * 24 * 3600),
+                _ => continue,
+            };
+            let Some(remaining) = bucket["remainingFraction"].as_f64().filter(|v| v.is_finite() && (0.0..=1.0).contains(v)) else { continue };
+            report.quotas.push(Quota { name: format!("{label} · {window}"), used_percent: (1.0-remaining)*100.0, resets_at: if remaining < 1.0 { expiry(&bucket["resetTime"]) } else { None }, window_seconds: Some(seconds), unit: "%".into(), ..Default::default() });
+        }
+    }
+    if report.quotas.is_empty() { return Err("Google n’a pas communiqué de fenêtres de quota exploitables.".into()); }
+    Ok(report)
+}
+
+fn apply_tier(report: &mut ProviderSnapshot, tier: Option<&Value>) {
     if let Some(tier) = tier {
         report.plan = tier
             .pointer("/paidTier/name")
@@ -383,12 +425,45 @@ pub fn parse_quotas(
             }
         }
     }
-    Ok(report)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn quota_summary_preserves_five_explicit_windows_and_percentages() {
+        let now = Utc::now();
+        let data = json!({"groups":[
+            {"displayName":"Gemini Models", "buckets":[{"window":"weekly","remainingFraction":0.912615,"resetTime":"2026-11-05T06:38:11Z"},{"window":"5h","remainingFraction":0.9884944}]},
+            {"displayName":"Claude and GPT models", "buckets":[{"window":"weekly","remainingFraction":0.4738824},{"window":"5h","remainingFraction":1.0,"resetTime":"2026-11-05T11:20:37Z"}]},
+            {"displayName":"Gemini 4 Argon", "buckets":[{"window":"weekly","remainingFraction":0.7388124}]}
+        ]});
+        let r = parse_quota_summary(&data, &ProviderConfig::default(), now).unwrap();
+        assert_eq!(r.quotas.len(), 5);
+        assert_eq!(r.quotas[0].name, "Gemini Pro / Flash · hebdomadaire");
+        assert!((r.quotas[0].used_percent - 8.7385).abs() < 0.0001);
+        assert_eq!(r.quotas[0].resets_at.unwrap().to_rfc3339(), "2026-11-05T06:38:11+00:00");
+        assert_eq!(r.quotas[1].window_seconds, Some(18000));
+        assert_eq!(r.quotas[2].name, "Claude / GPT · hebdomadaire");
+        assert!((r.quotas[2].used_percent - 52.61176).abs() < 0.0001);
+        assert!(r.quotas[3].resets_at.is_none());
+        assert_eq!(r.quotas[4].name, "Gemini 4 Argon · hebdomadaire");
+        assert!((r.quotas[4].used_percent - 26.11876).abs() < 0.0001);
+    }
+    #[test]
+    fn quota_summary_does_not_invent_missing_windows_or_values() {
+        let data = json!({"groups":[{"displayName":"Gemini Models","buckets":[
+            {"window":"5h","remainingFraction":0.0},
+            {"window":"weekly","resetTime":"2026-11-05T06:38:11Z"},
+            {"window":"weekly","remainingFraction":1.5},
+            {"window":"daily","remainingFraction":0.5}
+        ]}]});
+        let r = parse_quota_summary(&data, &ProviderConfig::default(), Utc::now()).unwrap();
+        assert_eq!(r.quotas.len(), 1);
+        assert_eq!(r.quotas[0].used_percent, 100.0);
+        assert!(r.quotas[0].resets_at.is_none());
+        assert!(parse_quota_summary(&json!({"groups":[]}), &ProviderConfig::default(), Utc::now()).is_err());
+    }
     #[test]
     fn remaining_fraction_and_actual_reset_are_preserved() {
         let provider = ProviderConfig::default();

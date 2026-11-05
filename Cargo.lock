@@ -3162,7 +3162,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokenscope"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "chrono",
  "csv",
@@ -3176,6 +3176,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tiny_http",
+ "tokio",
  "uuid",
  "walkdir",
  "winreg",
@@ -3191,6 +3192,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "windows-sys 0.61.2",
 ]

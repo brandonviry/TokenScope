@@ -4,13 +4,24 @@ Application Windows native en **Rust**, avec interface egui/OpenGL. Aucun Node.j
 
 ## Aperçu de l’interface
 
-**Vue d’ensemble** — quotas et prochaines réinitialisations par fournisseur.
+**Antigravity · version 1.2.0** — fenêtres Gemini, Claude / GPT et Gemini 4 Argon lorsqu’elles sont disponibles.
 
-![Vue d’ensemble de TokenScope avec les limites des comptes](docs/images/vue-ensemble.png)
+![Quotas Antigravity dans TokenScope 1.2.0](docs/images/antigravity.png)
 
-**Historique** — graphique et journal de consommation.
+**Qoder CLI · version 1.2.0** — crédits du forfait et crédits supplémentaires.
 
-![Historique de consommation dans TokenScope](docs/images/historique.png)
+![Quotas Qoder dans TokenScope 1.2.0](docs/images/qoder.png)
+
+<details>
+<summary>Captures conservées de la version 1.1.0</summary>
+
+Ces captures montrent les vues générales et l’historique avant les changements de la 1.2.0.
+
+![Vue d’ensemble de TokenScope 1.1.0](docs/images/vue-ensemble.png)
+
+![Historique de consommation de TokenScope 1.1.0](docs/images/historique.png)
+
+</details>
 
 ## Démarrer
 
@@ -21,6 +32,12 @@ Les connexions Codex et Claude peuvent être détectées dans leurs fichiers de 
 Depuis la version **1.1.0**, **Antigravity · Gemini** est également ajouté automatiquement au tableau de bord. Votre connexion Google existante est détectée ; le forfait Google AI Pro/Ultra est affiché lorsqu’il est communiqué par Google. Les configurations de la version précédente sont conservées, avec une sauvegarde avant l’ajout du connecteur.
 
 Les jauges affichent la consommation du quota, le pourcentage restant, le délai avant la prochaine réinitialisation et sa date en heure locale. Chaque relevé porte sa date de collecte. Une erreur de connexion conserve le dernier relevé ; une échéance dépassée reste « à confirmer » tant que le fournisseur ne l’a pas actualisée.
+
+## Mettre à jour ou revenir à une version précédente
+
+Avant la mise à jour, fermez TokenScope et copiez le dossier indiqué dans **Réglages → Données de l’application** dans un emplacement sûr. Sous Windows, il se trouve généralement dans `%LOCALAPPDATA%\TokenScope\TokenScope\data`. Extrayez ensuite la nouvelle archive dans un dossier séparé et lancez son exécutable. Les données existantes sont conservées ; Qoder est ajouté une fois lors de la migration. La configuration précédente est copiée dans `config.backup.json`, mais ce fichier est remplacé lors des enregistrements suivants : gardez votre propre copie avant la mise à jour.
+
+Les [versions précédentes](https://github.com/brandonviry/TokenScope/releases) restent téléchargeables. Pour revenir à la 1.1.0, fermez l’application, sauvegardez l’état actuel puis restaurez la copie des données faite avant la mise à jour et lancez l’ancien exécutable. La 1.1.0 ne sait pas lire le nouveau fournisseur Qoder ; utiliser l’ancienne configuration évite donc une incompatibilité. Les changements de données effectués depuis la mise à jour ne seront pas présents dans cette copie.
 
 ## Tableau de bord et historique
 
@@ -39,7 +56,8 @@ Les filtres calendaires utilisent l’heure locale de Windows. Les historiques d
 | --- | --- | --- |
 | Codex | Journaux `CODEX_HOME/sessions` et `archived_sessions`, sinon `~/.codex` | Compte connecté ; repli sur les snapshots des journaux |
 | Claude / Claude Code | Journaux de Claude Code dans `CLAUDE_CONFIG_DIR/projects`, sinon `~/.claude/projects` | Quota d’abonnement partagé, lu avec la session Claude Code |
-| Google Antigravity / Gemini | Imports/saisies si un historique de tokens est disponible ; aucun compteur n’est déduit d’une fraction de quota | Limites actives par modèle, échéances et forfait Google AI lus avec la session Antigravity existante |
+| Google Antigravity / Gemini | Imports/saisies si un historique de tokens est disponible ; aucun compteur n’est déduit d’une fraction de quota | Quotas partagés Gemini, Claude/GPT et Gemini 4 Argon selon les fenêtres renvoyées, avec repli par modèle |
+| Qoder CLI | Crédits du forfait et crédits supplémentaires ; historique de tokens non fourni | Quotas disponibles via la session locale de Qoder CLI |
 | Ollama Cloud | API officielle `/api/usage`, historique de 30 jours puis conservation locale des buckets collectés | API officielle `/api/balance` : anciennes fenêtres session/semaine ou allocation mensuelle et crédits achetés |
 | Anthropic API | API Analytics de l’organisation, historique de 90 jours | Budgets personnels configurables ; nécessite une clé Admin/Analytics |
 | Autres fournisseurs | Journaux au format JSONL commun ou import CSV | Budgets personnels et relevés manuels |
@@ -59,7 +77,7 @@ Dans **Connexions → Antigravity · Gemini**, laisser le chemin de session vide
 
 Quand la session du coffre Windows expire, TokenScope peut demander au client natif `agy` installé de l’actualiser via sa commande de liste des modèles. Cette commande n’envoie pas de prompt et ne génère pas de tokens. Aucun refresh token n’est recopié dans les données TokenScope. Si le client ne peut pas renouveler la session, ouvrez Antigravity pour vous reconnecter, puis actualisez.
 
-Les points de lecture `fetchAvailableModels` et `loadCodeAssist` renvoient les modèles et quotas actuellement exposés à ce compte. La mention **quota actif** est volontaire : une échéance seule ne permet pas d’identifier avec certitude une fenêtre de 5 heures ou une limite hebdomadaire. Les fenêtres non détaillées, les tokens consommés et les crédits non communiqués restent inconnus. Aucun pourcentage hebdomadaire n’est inventé. Plusieurs modèles peuvent partager un même quota.
+Le point de lecture `retrieveUserQuotaSummary` fournit les groupes et fenêtres réellement disponibles pour le compte : Gemini Pro / Flash et Claude / GPT peuvent avoir une limite de 5 heures et une limite hebdomadaire ; Gemini 4 Argon peut avoir une limite hebdomadaire distincte. Ces groupes dépendent du forfait et des réponses Google. Si le résumé est indisponible, TokenScope revient aux quotas actifs par modèle de `fetchAvailableModels` sans déduire leur période. Les tokens et les fenêtres non communiqués restent inconnus.
 
 Les crédits Google AI sont affichés seulement si le compte renvoie explicitement un solde `GOOGLE_ONE_AI`. La valeur zéro est alors distinguée de l’absence de solde. Ces points de lecture du client Antigravity peuvent évoluer, comme ceux de Codex et Claude.
 
@@ -127,16 +145,16 @@ cargo clippy --release --all-targets -- -D warnings
 cargo build --release --locked
 ```
 
-L’exécutable produit est `target\release\tokenscope.exe`. `Compiler.ps1` exécute ces vérifications puis copie `TokenScope.exe` et son empreinte SHA-256 dans `dist/`. Ce dossier contient des livrables locaux et est exclu de Git. Le script ne met pas à jour les archives ZIP existantes : elles doivent être recréées après une nouvelle compilation.
+L’exécutable produit est `target\release\tokenscope.exe`. `Compiler.ps1` exécute ces vérifications puis copie `TokenScope.exe` et son empreinte SHA-256 dans `dist/build/`. Ce dossier contient des livrables locaux et est exclu de Git. Le script ne met pas à jour les archives ZIP existantes : elles doivent être recréées après une nouvelle compilation.
 
 Options de diagnostic :
 
 ```powershell
-.\dist\TokenScope.exe --check
-.\dist\TokenScope.exe --data-dir .\profil-test
-.\dist\TokenScope.exe --screenshot .\capture.png
-.\dist\TokenScope.exe --screenshot .\historique.png --page history
-.\dist\TokenScope.exe --provider antigravity
+.\dist\build\TokenScope.exe --check
+.\dist\build\TokenScope.exe --data-dir .\profil-test
+.\dist\build\TokenScope.exe --screenshot .\capture.png
+.\dist\build\TokenScope.exe --screenshot .\historique.png --page history
+.\dist\build\TokenScope.exe --provider antigravity
 ```
 
 Le mode capture utilise le moteur de rendu natif, attend la fin de la première collecte, sauvegarde l’image et ferme sa fenêtre. `--page` accepte `history`, `connections` et `settings`. Le rapport `--check` est écrit dans le dossier de données même si le binaire Windows n’a pas de console.
@@ -154,6 +172,10 @@ Le mode capture utilise le moteur de rendu natif, attend la fin de la première 
 
 ## Organisation du dépôt
 
-Le code Rust se trouve dans `src/`, les exemples d’import dans `examples/` et le script de compilation à la racine. `target/` contient les fichiers générés par Cargo. `dist/` contient les livrables locaux lorsqu’ils ont été créés ou téléchargés. Ces deux dossiers ne sont pas suivis par Git. Le dossier `qa/` contient des scripts de diagnostic documentés dans son README ; leurs profils, captures et résultats locaux sont exclus de Git. Le dossier `.research/`, composé de références externes locales, est également exclu.
+Le code Rust se trouve dans `src/`, les exemples d’import dans `examples/` et le script de compilation à la racine. `target/` contient les fichiers générés par Cargo. `dist/build/` contient le dernier binaire compilé localement ; `dist/releases/` conserve les livrables locaux classés par version. Ces deux dossiers ne sont pas suivis par Git. Le dossier `qa/` contient des scripts de diagnostic documentés dans son README ; leurs profils, captures et résultats locaux sont exclus de Git. Le dossier `.research/`, composé de références externes locales, est également exclu.
 
-`SHA256SUMS.txt` est une empreinte publique permettant de contrôler l’intégrité du fichier, pas une clé secrète ni une signature attestant son origine. Dans PowerShell, comparez-la avec `(Get-FileHash .\dist\TokenScope.exe -Algorithm SHA256).Hash`.
+`SHA256SUMS.txt` est une empreinte publique permettant de contrôler l’intégrité du fichier, pas une clé secrète ni une signature attestant son origine. Dans PowerShell, comparez-la avec `(Get-FileHash .\dist\build\TokenScope.exe -Algorithm SHA256).Hash`.
+
+### Qoder CLI
+
+Qoder est ajouté par défaut aux nouvelles configurations et aux configurations existantes lors de leur mise à jour. Dans **Connexions**, il peut être désactivé ou supprimé. Installer Qoder CLI et se connecter avec `qodercli login` avant l’actualisation. TokenScope lit les quotas via la session locale sans copier les identifiants. Le protocole SDK utilisé est privé et peut changer selon la version de Qoder. La date d’expiration renvoyée par Qoder n’est pas interprétée comme une date de réinitialisation.

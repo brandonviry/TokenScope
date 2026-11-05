@@ -13,6 +13,19 @@ python qa/smoke.py
 
 Le script utilise `target/release/tokenscope.exe` et suppose que les sources Codex, Claude, Claude Code, Ollama Cloud et Antigravity sont configurées et accessibles sur la machine, avec des événements existants. Il effectue des connexions réelles, vérifie certains résultats, produit des captures et écrit ses profils et son rapport dans `qa/`. Un échec peut donc refléter une configuration absente ou un service indisponible, et non nécessairement un défaut de l’application. Les profils et captures portant les mêmes noms sont écrasés ou mis à jour.
 
+## Capture ciblée Qoder
+
+```powershell
+cargo build --release --locked
+python qa/qoder_capture.py
+```
+
+Le script utilise une session Qoder CLI déjà connectée, vérifie la récupération des quotas puis produit uniquement `qa/qoder.png`. Il utilise et met à jour `qa/qoder-profile/`, sans refaire les autres captures. La capture peut afficher des données de consommation réelles : vérifiez-la avant de la publier. Pour actualiser celle du README, copiez ensuite la capture vérifiée vers `docs/images/qoder.png`.
+
+## Capture ciblée Antigravity
+
+Après compilation, `python qa/antigravity_capture.py` vérifie les quotas avec la session Antigravity existante et génère uniquement `qa/antigravity-summary.png` et les données locales de son profil `qa/antigravity-summary-profile/`. La capture peut contenir des valeurs de compte réelles : vérifiez-la avant de la partager.
+
 ## Diagnostic Antigravity
 
 ```powershell
@@ -23,4 +36,6 @@ Ce script lit la session `gemini:antigravity` du coffre d’identifiants Windows
 
 ## Données locales
 
-Les profils, captures, rapports et réponses générés dans ce dossier sont ignorés par Git : ils peuvent contenir des données de compte ou de consommation. Vérifiez leur contenu avant de les partager. Seuls les scripts Python à la racine de `qa/` et ce README sont destinés à être suivis.
+Les profils, captures, rapports et réponses générés dans ce dossier sont ignorés par Git : ils peuvent contenir des données de compte ou de consommation. Vérifiez leur contenu avant de les partager. Seuls les scripts explicitement autorisés dans `.gitignore` et ce README sont destinés à être suivis.
+
+Pour tester un autre binaire compilé, définir temporairement `TOKENSCOPE_EXE` sur son chemin avant de lancer un script de capture ciblée.
