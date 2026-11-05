@@ -1,0 +1,3 @@
+id,provider,timestamp,model,input_tokens,output_tokens,cached_tokens,cache_write_tokens,cost_usd,credits,source,tokens_reported,request_count
+exemple-001,personnalise,2026-11-02T08:30:00Z,modele-exemple,1200,300,800,0,0.01,,Exemple fictif à importer volontairement,true,1
+exemple-002,personnalise,2026-11-02T09:00:00Z,modele-exemple,0,0,0,0,,,Exemple fictif de compteur sans tokens,false,12

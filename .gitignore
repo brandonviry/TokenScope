@@ -1,0 +1,23 @@
+# Fichiers générés par Cargo et livrables locaux
+/target/
+/dist/
+/TokenScope.exe
+/TokenScope-Windows-x64.zip
+
+# Données locales de recherche et de diagnostic
+/.firecrawl/
+/.research/
+/qa/*
+!/qa/smoke.py
+!/qa/antigravity_probe.py
+!/qa/README.md
+/profil-test/
+/capture.png
+/historique.png
+
+# Configuration locale et fichiers temporaires
+.env
+.env.*
+!.env.example
+*.tmp
+
